@@ -15,8 +15,6 @@ jobs:
           scope: '@myalbum'
       - name: Install
         run: yarn
-      - name: Test
-        run: yarn test
       - name: Eslint
         run: yarn run validate:eslint
       - name: Flow
