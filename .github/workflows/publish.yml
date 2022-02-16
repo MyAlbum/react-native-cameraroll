@@ -30,8 +30,5 @@ jobs:
           git config --local user.name "MyAlbum System"
       - name: Release
         run: yarn ci:publish
-      - name: Push changes
-        uses: ad-m/github-push-action@master
-        with:
-          tags: false
-          github_token: ${{ secrets.GITHUB_TOKEN }}
+        env:
+          NPM_TOKEN: ${{ secrets.GITHUB_TOKEN }}
