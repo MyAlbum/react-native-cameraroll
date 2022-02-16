@@ -9,20 +9,23 @@ package com.reactnativecommunity.cameraroll;
 
 import android.content.ContentResolver;
 import android.content.ContentUris;
+import android.content.ContentValues;
 import android.content.Context;
 import android.content.res.AssetFileDescriptor;
 import android.database.Cursor;
 import android.graphics.BitmapFactory;
+import android.media.ExifInterface;
 import android.media.MediaMetadataRetriever;
 import android.media.MediaScannerConnection;
 import android.net.Uri;
 import android.os.AsyncTask;
 import android.os.Build;
+import android.os.Bundle;
 import android.os.Environment;
+import android.os.FileUtils;
 import android.provider.MediaStore;
 import android.provider.MediaStore.Images;
 import android.text.TextUtils;
-import android.media.ExifInterface;
 
 import com.facebook.common.logging.FLog;
 import com.facebook.react.bridge.GuardedAsyncTask;
@@ -46,12 +49,12 @@ import java.io.FileInputStream;
 import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.IOException;
-import java.nio.channels.FileChannel;
+import java.io.OutputStream;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.HashMap;
 import java.util.Set;
 
 import javax.annotation.Nullable;
@@ -138,82 +141,108 @@ public class CameraRollModule extends ReactContextBaseJavaModule {
     @Override
     protected void doInBackgroundGuarded(Void... params) {
       File source = new File(mUri.getPath());
-      FileChannel input = null, output = null;
+      FileInputStream input = null;
+      OutputStream output = null;
       try {
-        boolean isAlbumPresent = !"".equals(mOptions.getString("album"));
-        
-        final File environment;
-        // Media is not saved into an album when using Environment.DIRECTORY_DCIM.
-        if (isAlbumPresent) {
-          if ("video".equals(mOptions.getString("type"))) {
-            environment = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_MOVIES);
-          } else {
-            environment = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES);
-          }
-        } else {
-          environment = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DCIM);
-        }
+        String album = mOptions.getString("album");
+        boolean isAlbumPresent = !TextUtils.isEmpty(album);
 
-        File exportDir;
-        if (isAlbumPresent) {
-          exportDir = new File(environment, mOptions.getString("album"));
-          if (!exportDir.exists() && !exportDir.mkdirs()) {
-            mPromise.reject(ERROR_UNABLE_TO_LOAD, "Album Directory not created. Did you request WRITE_EXTERNAL_STORAGE?");
+        // Android Q and above
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+          Uri mediaCollection = MediaStore.Files.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY);
+          ContentValues mediaDetails = new ContentValues();
+          if (isAlbumPresent) {
+            // Notes: I got this error when using Environment.DIRECTORY_MOVIES
+            // Primary directory Movies not allowed for content://media/external_primary/file; allowed directories are [Download, Documents]
+            String relativePath = Environment.DIRECTORY_DOCUMENTS + File.separator + album;
+            mediaDetails.put(Images.Media.RELATIVE_PATH, relativePath);
+          }
+          mediaDetails.put(Images.Media.DISPLAY_NAME, source.getName());
+          mediaDetails.put(Images.Media.IS_PENDING, 1);
+          ContentResolver resolver = mContext.getContentResolver();
+          Uri mediaContentUri = resolver
+                  .insert(mediaCollection, mediaDetails);
+          output = resolver.openOutputStream(mediaContentUri);
+          input = new FileInputStream(source);
+          FileUtils.copy(input, output);
+          mediaDetails.clear();
+          mediaDetails.put(Images.Media.IS_PENDING, 0);
+          resolver.update(mediaContentUri, mediaDetails, null, null);
+          mPromise.resolve(mediaContentUri.toString());
+        } else {
+          final File environment;
+          // Media is not saved into an album when using Environment.DIRECTORY_DCIM.
+          if (isAlbumPresent) {
+            if ("video".equals(mOptions.getString("type"))) {
+              environment = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_MOVIES);
+            } else {
+              environment = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES);
+            }
+          } else {
+            environment = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DCIM);
+          }
+          File exportDir;
+          if (isAlbumPresent) {
+            exportDir = new File(environment, album);
+            if (!exportDir.exists() && !exportDir.mkdirs()) {
+              mPromise.reject(ERROR_UNABLE_TO_LOAD, "Album Directory not created. Did you request WRITE_EXTERNAL_STORAGE?");
+              return;
+            }
+          } else {
+            exportDir = environment;
+          }
+
+          if (!exportDir.isDirectory()) {
+            mPromise.reject(ERROR_UNABLE_TO_LOAD, "External media storage directory not available");
             return;
           }
-        } else {
-          exportDir = environment;
-        }
+          File dest = new File(exportDir, source.getName());
+          int n = 0;
+          String fullSourceName = source.getName();
+          String sourceName, sourceExt;
+          if (fullSourceName.indexOf('.') >= 0) {
+            sourceName = fullSourceName.substring(0, fullSourceName.lastIndexOf('.'));
+            sourceExt = fullSourceName.substring(fullSourceName.lastIndexOf('.'));
+          } else {
+            sourceName = fullSourceName;
+            sourceExt = "";
+          }
+          while (!dest.createNewFile()) {
+            dest = new File(exportDir, sourceName + "_" + (n++) + sourceExt);
+          }
+          input = new FileInputStream(source);
+          output = new FileOutputStream(dest);
+          ((FileOutputStream) output).getChannel()
+                  .transferFrom(input.getChannel(), 0, input.getChannel().size());
+          input.close();
+          output.close();
 
-        if (!exportDir.isDirectory()) {
-          mPromise.reject(ERROR_UNABLE_TO_LOAD, "External media storage directory not available");
-          return;
+          MediaScannerConnection.scanFile(
+                  mContext,
+                  new String[]{dest.getAbsolutePath()},
+                  null,
+                  new MediaScannerConnection.OnScanCompletedListener() {
+                    @Override
+                    public void onScanCompleted(String path, Uri uri) {
+                      if (uri != null) {
+                        mPromise.resolve(uri.toString());
+                      } else {
+                        mPromise.reject(ERROR_UNABLE_TO_SAVE, "Could not add image to gallery");
+                      }
+                    }
+                  });
         }
-        File dest = new File(exportDir, source.getName());
-        int n = 0;
-        String fullSourceName = source.getName();
-        String sourceName, sourceExt;
-        if (fullSourceName.indexOf('.') >= 0) {
-          sourceName = fullSourceName.substring(0, fullSourceName.lastIndexOf('.'));
-          sourceExt = fullSourceName.substring(fullSourceName.lastIndexOf('.'));
-        } else {
-          sourceName = fullSourceName;
-          sourceExt = "";
-        }
-        while (!dest.createNewFile()) {
-          dest = new File(exportDir, sourceName + "_" + (n++) + sourceExt);
-        }
-        input = new FileInputStream(source).getChannel();
-        output = new FileOutputStream(dest).getChannel();
-        output.transferFrom(input, 0, input.size());
-        input.close();
-        output.close();
-
-        MediaScannerConnection.scanFile(
-            mContext,
-            new String[]{dest.getAbsolutePath()},
-            null,
-            new MediaScannerConnection.OnScanCompletedListener() {
-              @Override
-              public void onScanCompleted(String path, Uri uri) {
-                if (uri != null) {
-                  mPromise.resolve(uri.toString());
-                } else {
-                  mPromise.reject(ERROR_UNABLE_TO_SAVE, "Could not add image to gallery");
-                }
-              }
-            });
       } catch (IOException e) {
         mPromise.reject(e);
       } finally {
-        if (input != null && input.isOpen()) {
+        if (input != null) {
           try {
             input.close();
           } catch (IOException e) {
             FLog.e(ReactConstants.TAG, "Could not close input channel", e);
           }
         }
-        if (output != null && output.isOpen()) {
+        if (output != null) {
           try {
             output.close();
           } catch (IOException e) {
@@ -376,21 +405,39 @@ public class CameraRollModule extends ReactContextBaseJavaModule {
 
       WritableMap response = new WritableNativeMap();
       ContentResolver resolver = mContext.getContentResolver();
+      String selectionString = selection.toString();
 
       try {
-        // set LIMIT to first + 1 so that we know how to populate page_info
-        String limit = "limit=" + (mFirst + 1);
-
-        if (!TextUtils.isEmpty(mAfter)) {
-          limit = "limit=" + mAfter + "," + (mFirst + 1);
+        Cursor media;
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+          Bundle bundle = new Bundle();
+          bundle.putString(ContentResolver.QUERY_ARG_SQL_SELECTION, selectionString);
+          bundle.putStringArray(ContentResolver.QUERY_ARG_SQL_SELECTION_ARGS,
+                  selectionArgs.toArray(new String[selectionArgs.size()]));
+          bundle.putString(ContentResolver.QUERY_ARG_SQL_SORT_ORDER, Images.Media.DATE_ADDED + " DESC, " + Images.Media.DATE_MODIFIED + " DESC");
+          bundle.putInt(ContentResolver.QUERY_ARG_LIMIT, mFirst + 1);
+          if (!TextUtils.isEmpty(mAfter)) {
+            bundle.putInt(ContentResolver.QUERY_ARG_OFFSET, Integer.parseInt(mAfter));
+          }
+          media = resolver.query(
+                  MediaStore.Files.getContentUri("external"),
+                  PROJECTION,
+                  bundle,
+                  null);
+        } else {
+          // set LIMIT to first + 1 so that we know how to populate page_info
+          String limit = "limit=" + (mFirst + 1);
+          if (!TextUtils.isEmpty(mAfter)) {
+            limit = "limit=" + mAfter + "," + (mFirst + 1);
+          }
+          media = resolver.query(
+                  MediaStore.Files.getContentUri("external").buildUpon().encodedQuery(limit).build(),
+                  PROJECTION,
+                  selection.toString(),
+                  selectionArgs.toArray(new String[selectionArgs.size()]),
+                  Images.Media.DATE_ADDED + " DESC, " + Images.Media.DATE_MODIFIED + " DESC");
         }
 
-        Cursor media = resolver.query(
-            MediaStore.Files.getContentUri("external").buildUpon().encodedQuery(limit).build(),
-            PROJECTION,
-            selection.toString(),
-            selectionArgs.toArray(new String[selectionArgs.size()]),
-            Images.Media.DATE_ADDED + " DESC, " + Images.Media.DATE_MODIFIED + " DESC");
         if (media == null) {
           mPromise.reject(ERROR_UNABLE_TO_LOAD, "Could not get media");
         } else {
@@ -452,11 +499,7 @@ public class CameraRollModule extends ReactContextBaseJavaModule {
           if (media.moveToFirst()) {
             Map<String, Integer> albums = new HashMap<>();
             do {
-              int column = media.getColumnIndex(MediaStore.Images.ImageColumns.BUCKET_DISPLAY_NAME);
-              if ( column < 0 ) {
-                throw new IndexOutOfBoundsException();
-              }
-              String albumName = media.getString(column);
+              String albumName = media.getString(media.getColumnIndex(MediaStore.Images.ImageColumns.BUCKET_DISPLAY_NAME));
               if (albumName != null) {
                 Integer albumCount = albums.get(albumName);
                 if (albumCount == null) {
@@ -641,7 +684,9 @@ public class CameraRollModule extends ReactContextBaseJavaModule {
         // Do nothing. We can't handle this, and this is usually a system problem
       }
       try {
-        int timeInMillisec = Integer.parseInt(retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION));
+        int timeInMillisec =
+            Integer.parseInt(
+                retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION));
         playableDuration = timeInMillisec / 1000;
       } catch (NumberFormatException e) {
         success = false;
@@ -686,16 +731,19 @@ public class CameraRollModule extends ReactContextBaseJavaModule {
     }
 
     boolean success = true;
-    @Nullable AssetFileDescriptor photoDescriptor = null;
-
-    /* Read height and width data from the gallery cursor columns */
     int width = media.getInt(widthIndex);
     int height = media.getInt(heightIndex);
 
-    /* If the columns don't contain the size information, read the media file */
     if (width <= 0 || height <= 0) {
+      @Nullable AssetFileDescriptor photoDescriptor = null;
       try {
         photoDescriptor = resolver.openAssetFileDescriptor(photoUri, "r");
+      } catch (FileNotFoundException e) {
+        success = false;
+        FLog.e(ReactConstants.TAG, "Could not open asset file " + photoUri.toString(), e);
+      }
+
+      if (photoDescriptor != null) {
         if (isVideo) {
           MediaMetadataRetriever retriever = new MediaMetadataRetriever();
           try {
@@ -704,8 +752,12 @@ public class CameraRollModule extends ReactContextBaseJavaModule {
             // Do nothing. We can't handle this, and this is usually a system problem
           }
           try {
-            width = Integer.parseInt(retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_WIDTH));
-            height = Integer.parseInt(retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_HEIGHT));
+            width =
+                Integer.parseInt(
+                    retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_WIDTH));
+            height =
+                Integer.parseInt(
+                    retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_HEIGHT));
           } catch (NumberFormatException e) {
             success = false;
             FLog.e(
@@ -717,45 +769,21 @@ public class CameraRollModule extends ReactContextBaseJavaModule {
           retriever.release();
         } else {
           BitmapFactory.Options options = new BitmapFactory.Options();
-          // Set inJustDecodeBounds to true so we don't actually load the Bitmap in memory,
-          // but only get its dimensions
+          // Set inJustDecodeBounds to true so we don't actually load the Bitmap, but only get its
+          // dimensions instead.
           options.inJustDecodeBounds = true;
           BitmapFactory.decodeFileDescriptor(photoDescriptor.getFileDescriptor(), null, options);
           width = options.outWidth;
           height = options.outHeight;
         }
-      } catch (FileNotFoundException e) {
-        success = false;
-        FLog.e(ReactConstants.TAG, "Could not open asset file " + photoUri.toString(), e);
-      }
-    }
 
-    /* Read the EXIF photo data to update height and width in case a rotation is encoded */
-    if (success && !isVideo && Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
-      try {
-        if (photoDescriptor == null) photoDescriptor = resolver.openAssetFileDescriptor(photoUri, "r");
-        ExifInterface exif = new ExifInterface(photoDescriptor.getFileDescriptor());
-        int rotation = exif.getAttributeInt(ExifInterface.TAG_ORIENTATION, ExifInterface.ORIENTATION_NORMAL);
-        if (rotation == ExifInterface.ORIENTATION_ROTATE_90 || rotation == ExifInterface.ORIENTATION_ROTATE_270) {
-          // swap values
-          int temp = width;
-          width = height;
-          height = temp;
+        try {
+          photoDescriptor.close();
+        } catch (IOException e) {
+          // Do nothing. We can't handle this, and this is usually a system problem
         }
-      } catch (FileNotFoundException e) {
-        success = false;
-        FLog.e(ReactConstants.TAG, "Could not open asset file " + photoUri.toString(), e);
-      } catch (IOException e) {
-        FLog.e(ReactConstants.TAG, "Could not get exif data for file " + photoUri.toString(), e);
       }
-    }
 
-    if (photoDescriptor != null) {
-      try {
-        photoDescriptor.close();
-      } catch (IOException e) {
-        // Do nothing. We can't handle this, and this is usually a system problem
-      }
     }
 
     image.putInt("width", width);
