@@ -4,16 +4,7 @@ on:
     branches:
       - master
 jobs:
-  test:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v2
-      - name: Install
-        run: yarn
-      - name: Test
-        run: yarn test
   publish:
-    needs: [test]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v2
@@ -24,6 +15,8 @@ jobs:
           scope: '@myalbum'
       - name: Install
         run: yarn
+      - name: Test
+        run: yarn test
       - name: Setup git
         run: |
           git config --local user.email "sysadmin@myalbum.com"
