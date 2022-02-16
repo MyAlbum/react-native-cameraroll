@@ -21,14 +21,15 @@ jobs:
         with:
           node-version: 16
           registry-url: 'https://npm.pkg.github.com'
-      - run: npm install
+          scope: '@myalbum'
+      - name: Install
+        run: yarn
       - name: Setup git
         run: |
           git config --local user.email "sysadmin@myalbum.com"
           git config --local user.name "MyAlbum System"
-      - run: npm publish
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.PACKAGES_TOKEN }}
+      - name: Release
+        run: yarn ci:publish
       - name: Push changes
         uses: ad-m/github-push-action@master
         with:
