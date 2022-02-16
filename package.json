@@ -1,8 +1,8 @@
 {
-  "name": "@react-native-community/cameraroll",
+  "name": "@myalbum/react-native-cameraroll",
   "author": "Bartol Karuza <bartol.k@gmail.com>",
-  "homepage": "https://github.com/react-native-community/react-native-cameraroll#readme",
-  "version": "4.1.2",
+  "homepage": "https://github.com/myalbum/react-native-cameraroll#readme",
+  "version": "4.2.0",
   "description": "React Native Camera Roll for iOS & Android",
   "main": "./js/CameraRoll.js",
   "types": "./typings/CameraRoll.d.ts",
@@ -126,6 +126,9 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/react-native-community/react-native-cameraroll.git"
+    "url": "https://github.com/myalbum/react-native-cameraroll.git"
+  },
+  "publishConfig": {
+    "registry": "https://npm.pkg.github.com/"
   }
 }
