@@ -17,10 +17,18 @@ jobs:
         run: yarn
       - name: Test
         run: yarn test
-      - name: Setup git
-        run: |
-          git config --local user.email "sysadmin@myalbum.com"
-          git config --local user.name "MyAlbum System"
+      - name: Eslint
+        run: yarn run validate:eslint
+      - name: Flow
+        run: yarn run validate:flow
+      - name: TypeScript
+        run: yarn run validate:typescript
+      - name: Jest
+        run: yarn run test:jest
+      - name: Android JavaScript Bundle
+        run: yarn run test:detox:android:bundle:release
+      - name: iOS JavaScript Bundle
+        run: yarn run test:detox:ios:bundle:release
       - name: Release
         run: yarn ci:publish
         env:

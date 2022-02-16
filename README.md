@@ -1,4 +1,4 @@
-# `@react-native-community/cameraroll`
+# `@myalbum/react-native-cameraroll`
 
 [![CircleCI Status][circle-ci-badge]][circle-ci]
 ![Supports Android and iOS][supported-os-badge]
@@ -7,11 +7,11 @@
 
 ## Getting started
 
-`$ npm install @react-native-community/cameraroll --save`
+`$ npm install @myalbum/react-native-cameraroll --save`
 
 ### Mostly automatic installation
 
-`$ react-native link @react-native-community/cameraroll && npx pod-install`
+`$ react-native link @myalbum/react-native-cameraroll && npx pod-install`
 
 ### Manual installation
 
@@ -19,7 +19,7 @@
 #### iOS
 
 1. In XCode, in the project navigator, right click `Libraries` ➜ `Add Files to [your project's name]`
-2. Go to `node_modules` ➜ `@react-native-community/cameraroll` and add `RNCCameraroll.xcodeproj`
+2. Go to `node_modules` ➜ `@myalbum/react-native-cameraroll` and add `RNCCameraroll.xcodeproj`
 3. In XCode, in the project navigator, select your project. Add `libRNCCameraroll.a` to your project's `Build Phases` ➜ `Link Binary With Libraries`
 4. Run your project (`Cmd+R`)<
 
@@ -31,7 +31,7 @@
 2. Append the following lines to `android/settings.gradle`:
   	```
   	include ':@react-native-community_cameraroll'
-  	project(':@react-native-community_cameraroll').projectDir = new File(rootProject.projectDir, 	'../node_modules/@react-native-community/cameraroll/android')
+  	project(':@react-native-community_cameraroll').projectDir = new File(rootProject.projectDir, 	'../node_modules/@myalbum/react-native-cameraroll/android')
   	```
 3. Insert the following lines inside the dependencies block in `android/app/build.gradle`:
   	```
@@ -56,7 +56,7 @@ import { CameraRoll } from "react-native";
 to:
 
 ```javascript
-import CameraRoll from "@react-native-community/cameraroll";
+import CameraRoll from "@myalbum/react-native-cameraroll";
 ```
 
 ## Usage
@@ -92,7 +92,7 @@ Then you have to explicitly ask for the permission
 
 ```javascript
 import { PermissionsAndroid, Platform } from "react-native";
-import CameraRoll from "@react-native-community/cameraroll";
+import CameraRoll from "@myalbum/react-native-cameraroll";
 
 async function hasAndroidPermission() {
   const permission = PermissionsAndroid.PERMISSIONS.WRITE_EXTERNAL_STORAGE;
@@ -309,6 +309,6 @@ Returns a Promise which will resolve when the deletion request is completed, or 
 [circle-ci-badge]:https://img.shields.io/circleci/project/github/react-native-cameraroll/react-native-cameraroll/master.svg?style=flat-square
 [circle-ci]:https://circleci.com/gh/react-native-cameraroll/workflows/react-native-cameraroll/tree/master
 [supported-os-badge]:https://img.shields.io/badge/platforms-android%20|%20ios-lightgrey.svg?style=flat-square
-[license-badge]:https://img.shields.io/npm/l/@react-native-community/cameraroll.svg?style=flat-square
+[license-badge]:https://img.shields.io/npm/l/@myalbum/react-native-cameraroll.svg?style=flat-square
 [lean-core-badge]: https://img.shields.io/badge/Lean%20Core-Extracted-brightgreen.svg?style=flat-square
 [lean-core-issue]: https://github.com/facebook/react-native/issues/23313
